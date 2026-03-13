@@ -15,24 +15,24 @@ def atualizar_cardapio():
     pdf_url = None
     print("Buscando o link do documento...")
     
-    # Procura por links na página. Ampliamos a busca para não depender só do "wp-content"
+    # Procura por links (tag 'a') que tenham o atributo 'href'
     for link in soup.find_all('a', href=True):
         href = link['href'].lower()
         texto = link.text.lower()
         
-        # Procura por ".pdf" no link OU pelo botão "Baixar documento" que a UFCA usa
-        if '.pdf' in href or 'baixar documento' in texto or 'cardápio' in texto:
+        # Só aceita se o link terminar EXPLICITAMENTE em .pdf
+        if href.endswith('.pdf'):
             pdf_url = link['href']
-            # Garante que o link está completo
+            # Garante que o link está completo se for um caminho relativo
             if pdf_url.startswith('/'):
                 pdf_url = "https://www.ufca.edu.br" + pdf_url
-            break
+            break # Encontrou o primeiro PDF, para de procurar
             
     if not pdf_url:
-        print("❌ ERRO: Link do cardápio em PDF não encontrado.")
+        print("❌ ERRO: Nenhum link terminando em .pdf foi encontrado na página.")
         return
 
-    print(f"✅ PDF encontrado: {pdf_url}")
+    print(f"✅ PDF verdadeiro encontrado: {pdf_url}")
     print("Baixando e lendo o arquivo...")
     
     try:
@@ -45,9 +45,10 @@ def atualizar_cardapio():
         if tabela_extraida:
             print("✅ Tabela extraída com sucesso!")
             
-            # Remove linhas totalmente vazias que podem vir do PDF
+            # Limpa linhas vazias e tenta arranjar a tabela
             tabela_limpa = [linha for linha in tabela_extraida if any(celula for celula in linha)]
             
+            # Se a tabela tiver cabeçalho na primeira linha
             df = pd.DataFrame(tabela_limpa[1:], columns=tabela_limpa[0])
             tabela_html = df.to_html(index=False, classes='table table-striped table-hover table-bordered text-center', na_rep='-')
             
