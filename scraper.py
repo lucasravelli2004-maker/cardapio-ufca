@@ -13,42 +13,44 @@ def atualizar_cardapio():
     soup = BeautifulSoup(response.text, 'html.parser')
 
     pdf_url = None
-    print("Buscando o link do documento...")
+    print("Procurando o botão verde 'Baixar documento'...")
     
-    # Procura por links (tag 'a') que tenham o atributo 'href'
+    # Procura por todos os links na página
     for link in soup.find_all('a', href=True):
-        href = link['href'].lower()
-        texto = link.text.lower()
+        # Pega o texto de dentro do link e tira os espaços extras
+        texto = link.get_text(strip=True).lower()
+        href = link['href']
         
-        # Só aceita se o link terminar EXPLICITAMENTE em .pdf
-        if href.endswith('.pdf'):
-            pdf_url = link['href']
-            # Garante que o link está completo se for um caminho relativo
-            if pdf_url.startswith('/'):
-                pdf_url = "https://www.ufca.edu.br" + pdf_url
-            break # Encontrou o primeiro PDF, para de procurar
+        # Só aceita se o botão tiver EXATAMENTE a intenção de baixar o documento
+        if 'baixar documento' in texto:
+            # Garante que não é um link falso de abrir sanfona (como href="#" ou vazios)
+            if href.startswith('http') or href.startswith('/'):
+                pdf_url = href
+                if pdf_url.startswith('/'):
+                    pdf_url = "https://www.ufca.edu.br" + pdf_url
+                break # Encontrou o botão mais recente (o primeiro de cima), para de procurar!
             
     if not pdf_url:
-        print("❌ ERRO: Nenhum link terminando em .pdf foi encontrado na página.")
+        print("❌ ERRO: O botão 'Baixar documento' não foi encontrado na página.")
         return
 
-    print(f"✅ PDF verdadeiro encontrado: {pdf_url}")
+    print(f"✅ Botão encontrado! O link verdadeiro do PDF é: {pdf_url}")
     print("Baixando e lendo o arquivo...")
     
     try:
         pdf_response = requests.get(pdf_url, headers=headers)
         
         with pdfplumber.open(io.BytesIO(pdf_response.content)) as pdf:
-            pagina = pdf.pages[0] # Lê a primeira página
+            pagina = pdf.pages[0] # Lê a primeira página do cardápio
             tabela_extraida = pagina.extract_table()
             
         if tabela_extraida:
             print("✅ Tabela extraída com sucesso!")
             
-            # Limpa linhas vazias e tenta arranjar a tabela
+            # Limpa linhas vazias que o PDF possa ter
             tabela_limpa = [linha for linha in tabela_extraida if any(celula for celula in linha)]
             
-            # Se a tabela tiver cabeçalho na primeira linha
+            # Transforma em tabela HTML
             df = pd.DataFrame(tabela_limpa[1:], columns=tabela_limpa[0])
             tabela_html = df.to_html(index=False, classes='table table-striped table-hover table-bordered text-center', na_rep='-')
             
@@ -72,7 +74,7 @@ def atualizar_cardapio():
                     <div class="table-responsive">
                         {tabela_html}
                     </div>
-                    <p class="text-muted text-center mt-3"><small>Atualizado automaticamente.</small></p>
+                    <p class="text-muted text-center mt-3"><small>Atualizado automaticamente. Sistema não oficial.</small></p>
                 </div>
             </body>
             </html>
@@ -82,7 +84,7 @@ def atualizar_cardapio():
                 f.write(html_completo)
             print("✅ Site (index.html) gerado com sucesso!")
         else:
-            print("❌ ERRO: O PDF foi baixado, mas o robô não encontrou nenhuma tabela legível na primeira página.")
+            print("❌ ERRO: O PDF foi baixado, mas a tabela está em formato de imagem ou não pôde ser lida.")
             
     except Exception as e:
         print(f"❌ ERRO ao tentar baixar ou ler o arquivo: {e}")
