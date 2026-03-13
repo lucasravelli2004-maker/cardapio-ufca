@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 import pdfplumber
 import pandas as pd
 import io
+import re
 
 def atualizar_cardapio():
     url = "https://www.ufca.edu.br/assuntos-estudantis/refeitorio-universitario/cardapios/"
@@ -12,31 +13,35 @@ def atualizar_cardapio():
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    pdf_urls = []
+    links_encontrados = []
     print("A procurar os botões 'Baixar documento'...")
     
-    # Procura por todos os links na página
     for link in soup.find_all('a', href=True):
         texto = link.get_text(strip=True).lower()
         href = link['href']
         
-        # Se for um botão de descarregar, guarda-o na nossa lista
         if 'baixar documento' in texto:
-            if href.startswith('http') or href.startswith('/'):
-                url_completa = href
-                if url_completa.startswith('/'):
-                    url_completa = "https://www.ufca.edu.br" + url_completa
-                
-                pdf_urls.append(url_completa)
+            url_completa = href if href.startswith('http') else "https://www.ufca.edu.br" + href
             
-    if not pdf_urls:
-        print("❌ ERRO: O botão 'Baixar documento' não foi encontrado na página.")
+            # Extrai o número do documento (ex: p=45298). O maior número é o mais recente.
+            match = re.search(r'p=(\d+)', url_completa)
+            post_id = int(match.group(1)) if match else 0
+            
+            links_encontrados.append({
+                'url': url_completa,
+                'id': post_id
+            })
+            
+    if not links_encontrados:
+        print("❌ ERRO: O botão 'Baixar documento' não foi encontrado.")
         return
 
-    # --- A CORREÇÃO ESTÁ AQUI ---
-    # Em vez de pegar o primeiro, pegamos o último [-1] da lista, que é o mais recente
-    pdf_url = pdf_urls[-1]
-    print(f"✅ Foram encontrados {len(pdf_urls)} cardápios. O mais recente escolhido foi: {pdf_url}")
+    # Magia a acontecer: Ordena todos os botões colocando o maior ID (mais recente) no topo
+    links_encontrados.sort(key=lambda x: x['id'], reverse=True)
+    
+    pdf_url = links_encontrados[0]['url']
+    print(f"✅ Foram encontrados {len(links_encontrados)} cardápios.")
+    print(f"O mais recente escolhido (ID {links_encontrados[0]['id']}) é: {pdf_url}")
     print("A descarregar e a ler o ficheiro...")
     
     try:
@@ -88,7 +93,7 @@ def atualizar_cardapio():
             
             with open('index.html', 'w', encoding='utf-8') as f:
                 f.write(html_completo)
-            print("✅ Site gerado, limpo e formatado com sucesso!")
+            print("✅ Site gerado com sucesso!")
         else:
             print("❌ ERRO: Nenhuma tabela legível encontrada.")
             
