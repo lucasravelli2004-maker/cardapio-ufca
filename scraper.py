@@ -15,20 +15,16 @@ def atualizar_cardapio():
     pdf_url = None
     print("Procurando o botão verde 'Baixar documento'...")
     
-    # Procura por todos os links na página
     for link in soup.find_all('a', href=True):
-        # Pega o texto de dentro do link e tira os espaços extras
         texto = link.get_text(strip=True).lower()
         href = link['href']
         
-        # Só aceita se o botão tiver EXATAMENTE a intenção de baixar o documento
         if 'baixar documento' in texto:
-            # Garante que não é um link falso de abrir sanfona (como href="#" ou vazios)
             if href.startswith('http') or href.startswith('/'):
                 pdf_url = href
                 if pdf_url.startswith('/'):
                     pdf_url = "https://www.ufca.edu.br" + pdf_url
-                break # Encontrou o botão mais recente (o primeiro de cima), para de procurar!
+                break
             
     if not pdf_url:
         print("❌ ERRO: O botão 'Baixar documento' não foi encontrado na página.")
@@ -41,18 +37,34 @@ def atualizar_cardapio():
         pdf_response = requests.get(pdf_url, headers=headers)
         
         with pdfplumber.open(io.BytesIO(pdf_response.content)) as pdf:
-            pagina = pdf.pages[0] # Lê a primeira página do cardápio
+            pagina = pdf.pages[0] 
             tabela_extraida = pagina.extract_table()
             
         if tabela_extraida:
-            print("✅ Tabela extraída com sucesso!")
+            print("✅ Tabela extraída com sucesso! Iniciando a limpeza dos dados...")
             
-            # Limpa linhas vazias que o PDF possa ter
+            # Limpa linhas totalmente vazias
             tabela_limpa = [linha for linha in tabela_extraida if any(celula for celula in linha)]
             
-            # Transforma em tabela HTML
+            # Cria a tabela usando a biblioteca Pandas
             df = pd.DataFrame(tabela_limpa[1:], columns=tabela_limpa[0])
-            tabela_html = df.to_html(index=False, classes='table table-striped table-hover table-bordered text-center', na_rep='-')
+            
+            # --- INÍCIO DA FAXINA NOS DADOS ---
+            # Converte tudo para texto
+            df = df.astype(str)
+            
+            # Remove a palavra 'None' e substitui por vazio ou traço
+            df = df.replace('None', '', regex=False)
+            
+            # Troca o '\n' do PDF pela quebra de linha oficial do HTML (<br>)
+            df = df.replace(r'\n', '<br>', regex=True)
+            
+            # Faz a mesma limpeza nos títulos das colunas (cabeçalho)
+            df.columns = [str(col).replace('None', '').replace('\n', '<br>') for col in df.columns]
+            # -----------------------------------
+            
+            # Transforma em tabela HTML (escape=False permite que o <br> funcione)
+            tabela_html = df.to_html(index=False, escape=False, classes='table table-striped table-hover table-bordered text-center align-middle')
             
             html_completo = f"""
             <!DOCTYPE html>
@@ -63,18 +75,19 @@ def atualizar_cardapio():
                 <title>Cardápio da Semana - RU UFCA</title>
                 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
                 <style>
-                    body {{ background-color: #f8f9fa; padding: 20px; }}
-                    .container {{ background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
-                    thead {{ background-color: #005b96; color: white; }}
+                    body {{ background-color: #f8f9fa; padding: 20px; font-size: 14px; }}
+                    .container {{ background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 95%; }}
+                    thead {{ background-color: #005b96; color: white; vertical-align: middle; }}
+                    th, td {{ padding: 12px !important; vertical-align: middle; }}
                 </style>
             </head>
             <body>
                 <div class="container mt-4">
-                    <h2 class="mb-4 text-center">Cardápio da Semana - RU UFCA</h2>
+                    <h2 class="mb-4 text-center" style="color: #005b96;">Cardápio da Semana - RU UFCA</h2>
                     <div class="table-responsive">
                         {tabela_html}
                     </div>
-                    <p class="text-muted text-center mt-3"><small>Atualizado automaticamente. Sistema não oficial.</small></p>
+                    <p class="text-muted text-center mt-4"><small>Atualizado automaticamente. Sistema não oficial.</small></p>
                 </div>
             </body>
             </html>
@@ -82,9 +95,15 @@ def atualizar_cardapio():
             
             with open('index.html', 'w', encoding='utf-8') as f:
                 f.write(html_completo)
-            print("✅ Site (index.html) gerado com sucesso!")
+            print("✅ Site gerado, limpo e formatado com sucesso!")
         else:
-            print("❌ ERRO: O PDF foi baixado, mas a tabela está em formato de imagem ou não pôde ser lida.")
+            print("❌ ERRO: Nenhuma tabela legível encontrada.")
+            
+    except Exception as e:
+        print(f"❌ ERRO ao tentar baixar ou ler o arquivo: {e}")
+
+if __name__ == '__main__':
+    atualizar_cardapio()
             
     except Exception as e:
         print(f"❌ ERRO ao tentar baixar ou ler o arquivo: {e}")
