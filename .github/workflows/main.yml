@@ -1,0 +1,33 @@
+name: Atualizar Cardápio Automaticamente
+
+on:
+  schedule:
+    # Roda toda segunda-feira às 07:00 UTC (04:00 no horário de Brasília)
+    - cron: '0 7 * * 1'
+  workflow_dispatch: # Permite rodar o robô manualmente clicando em um botão
+
+jobs:
+  atualizar-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar os arquivos do repositório
+        uses: actions/checkout@v3
+
+      - name: Preparar o Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar bibliotecas
+        run: pip install -r requirements.txt
+
+      - name: Executar o robô
+        run: python scraper.py
+
+      - name: Salvar o novo index.html no GitHub
+        run: |
+          git config --global user.name 'Robo Cardapio'
+          git config --global user.email 'bot@seuemail.com'
+          git add index.html
+          git commit -m "Atualiza cardápio da semana" || exit 0
+          git push
